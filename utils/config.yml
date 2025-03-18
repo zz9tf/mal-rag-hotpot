@@ -1,0 +1,14 @@
+DocumentReader:
+  input_file_path: "./data/wiki-ori-20171001.xml"
+  cache_dir: "./data/.cache"
+  save_cache: False
+  worker: 10
+  pages_per_batch: 500000
+multilingual-e5-large-instruct:
+  cache_dir: "/work/zhengzheng/.hf_cache"
+OriginalContentDatabase:
+  db_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/database/original_content_database.db"
+EmbeddingDatabase:
+  db_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/database/embedding_database.db"
+MatchingSystem:
+  db_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/database/matching_system_database.db"
