@@ -4,6 +4,7 @@ from torch import Tensor
 from transformers import AutoTokenizer, AutoModel
 from configs import load_configs
 import numpy as np
+from tqdm import tqdm
 
 class MultilingualE5LargeInstruct:
     def __init__(self, device: str = None):
@@ -84,10 +85,11 @@ class MultilingualE5LargeInstruct:
             
         return [len(b) for b in batch_map], sorted_indices
 
-    def generate_embeddings(self, input_texts: List[str], task_description: str = None) -> Tensor:
-        if self.model is None:
-            self.model = AutoModel.from_pretrained('intfloat/multilingual-e5-large-instruct').to(self.device)
-            self.model.eval()
+    def generate_embeddings(self, input_texts: List[str], task_description: str = None) -> List[List[float]]:
+        """Generate embeddings for input texts with optional task description."""
+        # Prepend task description to input texts if provided
+        if task_description:
+            input_texts = [f"{task_description}: {text}" for text in input_texts]
         
         # Tokenize all texts first
         tokenized = self.tokenizer(input_texts, padding=False, truncation=True)
@@ -100,27 +102,33 @@ class MultilingualE5LargeInstruct:
         all_embeddings = []
         
         ptr = 0
-        for batch_size in batch_sizes:
-            batch_texts = sorted_texts[ptr:ptr+batch_size]
-            ptr += batch_size
-            
-            inputs = self.tokenizer(
-                batch_texts,
-                padding=True,
-                truncation=True,
-                return_tensors='pt',
-                max_length=512
-            ).to(self.device)
-            
-            with torch.no_grad(), torch.cuda.amp.autocast():
-                outputs = self.model(**inputs)
+        print()
+        # Add tqdm progress bar
+        with tqdm(total=len(input_texts), desc="Generating Embeddings", unit="text") as pbar:
+            for batch_size in batch_sizes:
+                batch_texts = sorted_texts[ptr:ptr+batch_size]
+                ptr += batch_size
                 
-            embeddings = outputs.last_hidden_state[:, 0].cpu().numpy()
-            all_embeddings.append(embeddings)
-            
-            # Clean up
-            del inputs, outputs
-            torch.cuda.empty_cache()
+                inputs = self.tokenizer(
+                    batch_texts,
+                    padding=True,
+                    truncation=True,
+                    return_tensors='pt',
+                    max_length=512
+                ).to(self.device)
+                
+                with torch.no_grad(), torch.cuda.amp.autocast():
+                    outputs = self.model(**inputs)
+                    
+                embeddings = outputs.last_hidden_state[:, 0].cpu().numpy()
+                all_embeddings.append(embeddings)
+                
+                # Update progress bar
+                pbar.update(len(batch_texts))
+                
+                # Clean up
+                del inputs, outputs
+                torch.cuda.empty_cache()
         
         # Restore original order
         reverse_indices = np.argsort(sorted_indices)

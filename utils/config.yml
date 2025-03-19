@@ -7,12 +7,17 @@ DocumentReader:
   gpu_num: 1
   store_batch_size: 2000 # execute insert operation every 2000 documents
   embedding_batch_size: 500 # process embeddings in smaller sub-batches
+
 multilingual-e5-large-instruct:
   cache_dir: "/work/zhengzheng/.hf_cache"
+
 OriginalContentDatabase:
   db_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/database/original_content_database.db"
+
 EmbeddingDatabase:
+  hotpot_qa_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/database/hotpot_qa_database.db"
   db_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/database/embedding_database.db"
+
 HotpotDatabase:
   data_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/data/hotpot_train_v1.1.json"
   db_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/database/hotpot_database.db"

@@ -3,14 +3,16 @@ import sqlite3
 import json
 from tqdm import tqdm
 from embedding_model import MultilingualE5LargeInstruct
-
+from embedding_database import EmbeddingDatabaseHandler
 class HotpotDatabaseHandler:
     def __init__(self, db_path):
         self.db_path = db_path
         self.conn = None
         self.cursor = None
         self.initialize_db()
-    
+        self.embedding_db_handler = None
+        self.embedding_model = None
+
     def connect(self):
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row  # This enables column access by name
@@ -32,9 +34,7 @@ class HotpotDatabaseHandler:
             sentence_id TEXT, -- Matched sentence id from original content database
             paragraph_id TEXT, -- Matched paragraph id from original content database
             section_id TEXT, -- Matched section id from original content database
-            document_id TEXT, -- Matched document id from original content database
-            embedding_id INTEGER, -- Foreign key to ContentEmbedding table
-            FOREIGN KEY (embedding_id) REFERENCES ContentEmbedding(id)
+            document_id TEXT -- Matched document id from original content database
         )
         ''')
         
@@ -49,25 +49,7 @@ class HotpotDatabaseHandler:
             answer TEXT NOT NULL,
             type TEXT NOT NULL,
             level TEXT NOT NULL,
-            question_type TEXT NOT NULL,
-            embedding_id INTEGER, -- Foreign key to QuestionEmbedding table
-            FOREIGN KEY (embedding_id) REFERENCES QuestionEmbedding(id)
-        )
-        ''')
-        
-        # Create QuestionEmbedding table
-        self.cursor.execute('''
-        CREATE TABLE IF NOT EXISTS QuestionEmbedding (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            embedding BLOB NOT NULL  -- Store embedding as a binary large object
-        )
-        ''')
-        
-        # Create ContentEmbedding table
-        self.cursor.execute('''
-        CREATE TABLE IF NOT EXISTS ContentEmbedding (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            embedding BLOB NOT NULL  -- Store embedding as a binary large object
+            question_type TEXT NOT NULL
         )
         ''')
         
@@ -146,7 +128,7 @@ class HotpotDatabaseHandler:
         )
         return embedding_tensors
    
-    def bulk_insert_hotpot_qa_data(self, hotpot_data_list, question_type='train', batch_size=2000):
+    def bulk_insert_hotpot_qa_data(self, hotpot_data_list, config, question_type='train', batch_size=2000):
         """
         Efficiently insert HotpotQA data into the database using batched transactions.
         
@@ -158,6 +140,9 @@ class HotpotDatabaseHandler:
         Returns:
             Dictionary with statistics about inserted data
         """
+        # Initialize embedding database handler
+        self.embedding_db_handler = EmbeddingDatabaseHandler(config['EmbeddingDatabase']['hotpot_qa_path'])
+        
         # Initialize embedding model
         self.embedding_model = MultilingualE5LargeInstruct()
         
@@ -252,28 +237,19 @@ class HotpotDatabaseHandler:
                     
                     # Generate embeddings for the new content
                     content_embeddings = self.generate_embeddings_batch(sentences)
-
-                    # Insert embeddings into ContentEmbedding table
-                    self.cursor.executemany(
-                        "INSERT INTO ContentEmbedding (embedding) VALUES (?)",
-                        [(json.dumps(embedding),) for embedding in content_embeddings]
-                    )
-                    self.conn.commit()
                     
-                    # Fetch the embedding IDs for the newly inserted embeddings
-                    self.cursor.execute(
-                        "SELECT id FROM ContentEmbedding ORDER BY id DESC LIMIT ?",
-                        (len(content_embeddings),)
-                    )
-                    embedding_ids = [row['id'] for row in self.cursor.fetchall()]
+                    # Prepare embeddings for ChromaDB
+                    embedding_batch = [
+                        {
+                            "id": str(row['id']),
+                            "embedding": embedding,
+                            "metadata": {"type": f"{question_type}_content"}
+                        }
+                        for row, embedding in zip(rows, content_embeddings)
+                    ]
                     
-                    # Update ContentData with the corresponding embedding IDs
-                    for content_id, embedding_id in zip(content_insert_ids.values(), embedding_ids):
-                        self.cursor.execute(
-                            "UPDATE ContentData SET embedding_id = ? WHERE id = ?",
-                            (embedding_id, content_id)
-                        )
-                    self.conn.commit()
+                    # Insert embeddings into ChromaDB in bulk
+                    self.embedding_db_handler.bulk_insert_embeddings(embedding_batch)
                 
                 pbar.set_postfix_str("preparing questions")
                 # Second pass: prepare questions with references to content
@@ -342,28 +318,18 @@ class HotpotDatabaseHandler:
                     questions = [item[1] for item in questions_to_insert]
                     question_embeddings = self.generate_embeddings_batch(questions)
                     
-                    # Insert embeddings into QuestionEmbedding table
-                    self.cursor.executemany(
-                        "INSERT INTO QuestionEmbedding (embedding) VALUES (?)",
-                        [(json.dumps(embedding),) for embedding in question_embeddings]
-                    )
-                    self.conn.commit()
+                    # Prepare embeddings for ChromaDB
+                    embedding_batch = [
+                        {
+                            "id": hotpot_item[0],
+                            "embedding": embedding,
+                            "metadata": {"type": f"{question_type}_question"}
+                        }
+                        for hotpot_item, embedding in zip(questions_to_insert, question_embeddings)
+                    ]
                     
-                    # Fetch the embedding IDs for the newly inserted embeddings
-                    self.cursor.execute(
-                        "SELECT id FROM QuestionEmbedding ORDER BY id DESC LIMIT ?",
-                        (len(question_embeddings),)
-                    )
-                    embedding_ids = [row['id'] for row in self.cursor.fetchall()]
-                    
-                    # Update Question with the corresponding embedding IDs
-                    for question_id, embedding_id in zip(question_id_cache.keys(), embedding_ids):
-                        self.cursor.execute(
-                            "UPDATE Question SET embedding_id = ? WHERE id_in_dataset = ?",
-                            (embedding_id, question_id)
-                        )
-                    self.conn.commit()
-                
+                    # Insert embeddings into ChromaDB in bulk
+                    self.embedding_db_handler.bulk_insert_embeddings(embedding_batch)
                 
                 # Commit the transaction for this batch
                 self.conn.commit()
@@ -374,8 +340,8 @@ class HotpotDatabaseHandler:
         # Close connection
         self.disconnect()
         
-        return stats
-            
+        return stats  
+
     def bulk_update_content_mapping(self, mappings, batch_size=500):
         """
         Efficiently update multiple content mappings in a single transaction.
@@ -478,6 +444,7 @@ def main():
         # Insert data with optimized bulk insertion
         stats = db_hotpot.bulk_insert_hotpot_qa_data(
             hotpot_data, 
+            config,
             question_type='train',
             batch_size=2000  # Adjust based on your system's memory
         )

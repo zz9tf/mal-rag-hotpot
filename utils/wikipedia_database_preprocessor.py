@@ -528,11 +528,6 @@ class WikipediaDumpProcessor:
         embedding_tensors = self.embedding_model.generate_embeddings(
             input_texts=texts,
         )
-        print(len(embedding_tensors))
-        for emb in embedding_tensors:
-            print(emb[:5])
-            print(len(emb))
-        input()
         return embedding_tensors
 
     # ----- BATCH PROCESSING METHODS -----
