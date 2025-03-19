@@ -84,6 +84,33 @@ class EmbeddingDatabaseHandler:
             limit=limit
         )
         return results
+
+    def bulk_insert_embeddings(self, embedding_data, batch_size=500):
+        """
+        Insert multiple embeddings in batches.
+        
+        Args:
+            embedding_data: List of dicts with 'id', 'embedding', and 'metadata' keys
+            batch_size: Number of embeddings to insert in a single ChromaDB operation
+            
+        Returns:
+            True if successful
+        """
+        # Process in sub-batches for ChromaDB
+        for i in range(0, len(embedding_data), batch_size):
+            batch = embedding_data[i:i+batch_size]
+            
+            ids = [item['id'] for item in batch]
+            embeddings = [item['embedding'] for item in batch]
+            metadatas = [item['metadata'] for item in batch]
+            
+            self.collection.add(
+                ids=ids,
+                embeddings=embeddings,
+                metadatas=metadatas
+            )
+        
+        return True
     
 if __name__ == "__main__":
     from configs import load_configs

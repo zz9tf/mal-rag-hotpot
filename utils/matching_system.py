@@ -203,52 +203,6 @@ class MatchingSystem:
         )
         
         return self._format_search_results(results)
-    
-    def insert_hotpot_qa_data(self, hotpot_data_list, question_type='train'):
-        """
-        Insert HotpotQA data into the database.
-        
-        Args:
-            hotpot_data_list: List of HotpotQA question data objects
-            
-        Sample hotpot_data:
-        {
-            'supporting_facts': [["Arthur's Magazine", 0], ['First for Women', 0]],
-            'level': 'medium',
-            'question': "Which magazine was started first Arthur's Magazine or First for Women?",
-            'context': [['Radio City (Indian radio station)', ["Radio City is India's first private...", "..."]],
-                        ['History of Albanian football', ['Football in Albania...', '...']],
-                        ...],
-            'answer': "Arthur's Magazine",
-            '_id': '5a7a06935542990198eaf050'
-        }
-        """
-        for hotpot_item in hotpot_data_list:
-            context_refs = []
-            supporting_facts = []
-            # Process each title-content pair from context
-            for context_pair in hotpot_item['context']:
-                title = context_pair[0]
-                content = context_pair[1]  # List of sentences
-                
-                # Insert content data for each title
-                content_data_id = self.db_hotpot.insert_content_data(
-                    title=title,
-                    content=json.dumps(content)  # Store content as JSON string
-                )
-                context_refs.append(content_data_id)
-                if title in hotpot_item['supporting_facts']:
-                    found_item = next((item for item in hotpot_item['supporting_facts'] if item[0] == title_to_find), None)
-                    supporting_facts.append({'content_data_id': content_data_id, 'sentence_idx': found_item[1]})
-            
-            # Insert the question with its metadata
-            question_id = self.db_hotpot.insert_question(
-                question=hotpot_item['question'],
-                supporting_facts=supporting_facts,  # Will be JSON serialized in the handler
-                context=context_refs,  # Will be JSON serialized in the handler
-                answer=hotpot_item['answer'],
-                question_type=question_type
-            )
 
     def generate_summaries_for_documents(self, document_ids):
         """

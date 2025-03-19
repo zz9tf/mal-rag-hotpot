@@ -345,8 +345,129 @@ class OriginalContentDatabaseHandler:
                 
         return None
     
+    # Add to OriginalContentDatabaseHandler
+    def begin_transaction(self):
+        """Begin a database transaction."""
+        self.connect()
+        self.conn.execute("BEGIN TRANSACTION")
+
+    def commit_transaction(self):
+        """Commit the current transaction."""
+        self.conn.commit()
+        self.disconnect()
+
+    def rollback_transaction(self):
+        """Roll back the current transaction."""
+        self.conn.rollback()
+        self.disconnect()
+
+    def bulk_insert_documents(self, documents):
+        """
+        Insert multiple documents in a single transaction.
+        
+        Args:
+            documents: List of Document objects
+            
+        Returns:
+            List of inserted document IDs
+        """
+        document_data = [(doc.title,) for doc in documents]
+    
+        self.cursor.execute("SELECT MAX(id) FROM Document")
+        max_id_before = self.cursor.fetchone()[0] or 0
+        
+        self.cursor.executemany(
+            "INSERT INTO Document (title) VALUES (?)",
+            document_data
+        )
+        
+        self.cursor.execute("SELECT MAX(id) FROM Document")
+        max_id_after = self.cursor.fetchone()[0]
+        ids = list(range(max_id_before + 1, max_id_after + 1))
+
+        return ids
+
+    def bulk_insert_sections(self, section_data):
+        """
+        Insert multiple sections in a single transaction.
+        
+        Args:
+            section_data: List of tuples (Section object, document_id)
+            
+        Returns:
+            List of inserted section IDs
+        """
+        data = [(section.title, document_id) for section, document_id in section_data]
+        
+        self.cursor.execute("SELECT MAX(id) FROM Section")
+        max_id_before = self.cursor.fetchone()[0] or 0
+        
+        self.cursor.executemany(
+            "INSERT INTO Section (title, document_id) VALUES (?, ?)",
+            data
+        )
+        
+        self.cursor.execute("SELECT MAX(id) FROM Section")
+        max_id_after = self.cursor.fetchone()[0]
+        ids = list(range(max_id_before + 1, max_id_after + 1))
+        
+        return ids
+    
+    def bulk_insert_paragraphs(self, paragraph_data):
+        """
+            Insert multiple paragraphs in a single transaction.
+            
+            Args:
+                paragraph_data: List of tuples (Paragraph object, section_id)
+                
+            Returns:
+                List of inserted paragraph IDs
+        """
+        data = [(section_id,) for _, section_id in paragraph_data]
+        
+        self.cursor.execute("SELECT MAX(id) FROM Paragraph")
+        max_id_before = self.cursor.fetchone()[0] or 0
+        
+        self.cursor.executemany(
+            "INSERT INTO Paragraph (section_id) VALUES (?)",
+            data
+        )
+        
+        self.cursor.execute("SELECT MAX(id) FROM Paragraph")
+        max_id_after = self.cursor.fetchone()[0]
+        ids = list(range(max_id_before + 1, max_id_after + 1))
+        
+        return ids
+
+    def bulk_insert_sentences(self, sentences):
+        """
+        Insert multiple sentences in a single transaction and return their IDs.
+        
+        Args:
+            documents: List of Document objects
+            
+        Returns:
+            List of inserted document IDs
+        """
+        sentence_data = [(sentence.content, paragraph_id) for sentence, paragraph_id in sentences]
+        
+        self.cursor.execute("SELECT MAX(id) FROM MultiSentence")
+        max_id_before = self.cursor.fetchone()[0] or 0
+        
+        self.cursor.executemany(
+            "INSERT INTO MultiSentence (content, paragraph_id) VALUES (?, ?)",
+            sentence_data
+        )
+        
+        self.cursor.execute("SELECT MAX(id) FROM MultiSentence")
+        max_id_after = self.cursor.fetchone()[0]
+        ids = list(range(max_id_before + 1, max_id_after + 1))
+        
+        return ids
+
 def main():
     from configs import load_configs
+    
     config = load_configs()
     
     # Path to the SQLite database

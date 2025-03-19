@@ -1,14 +1,19 @@
 DocumentReader:
-  input_file_path: "./data/wiki-ori-20171001.xml"
-  cache_dir: "./data/.cache"
-  save_cache: False
+  input_file_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/data/wiki-ori-20171001.xml"
+  cache_dir: /home/zhengzheng/work/database_save/raw_page # "/scratch0/zhengzheng/projects/mal-rag-hotpot/data/.cache"
+  size_per_batch: 3000000000 # xml file is cleaned and splited into multiple 3GB files
   worker: 10
-  pages_per_batch: 500000
+  # thread properties
+  gpu_num: 1
+  store_batch_size: 2000 # execute insert operation every 2000 documents
+  embedding_batch_size: 500 # process embeddings in smaller sub-batches
 multilingual-e5-large-instruct:
   cache_dir: "/work/zhengzheng/.hf_cache"
 OriginalContentDatabase:
   db_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/database/original_content_database.db"
 EmbeddingDatabase:
   db_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/database/embedding_database.db"
-MatchingSystem:
-  db_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/database/matching_system_database.db"
+HotpotDatabase:
+  data_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/data/hotpot_train_v1.1.json"
+  db_path: "/scratch0/zhengzheng/projects/mal-rag-hotpot/database/hotpot_database.db"
+  question_type: "train"
